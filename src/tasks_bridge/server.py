@@ -27,6 +27,7 @@ def build_app(with_auth: bool = True) -> FastMCP:
             client_id=config.LAYER_A_CLIENT_ID,
             client_secret=config.LAYER_A_CLIENT_SECRET,
             base_url=config.BASE_URL,
+            required_scopes=["openid", "email"],
         )
         mcp = FastMCP("Google Tasks Bridge", auth=auth)
     else:
