@@ -1,0 +1,18 @@
+[Unit]
+Description=Google Tasks MCP Bridge
+After=network.target
+
+[Service]
+Type=simple
+User=finne
+WorkingDirectory=/home/finne/Projects/google-tasks-mcp
+EnvironmentFile=/home/finne/Projects/google-tasks-mcp/.env
+ExecStart=/home/finne/Projects/google-tasks-mcp/.venv/bin/python -m tasks_bridge.server
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tasks-bridge
+
+[Install]
+WantedBy=default.target

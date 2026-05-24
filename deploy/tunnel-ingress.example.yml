@@ -1,0 +1,17 @@
+# Add this ingress rule to your existing Cloudflare Tunnel config on fe-home.
+#
+# If config-file managed (~/.cloudflared/config.yml or /etc/cloudflared/config.yml):
+#   Add the entry below to the `ingress:` list, BEFORE the catch-all rule.
+#   Then: sudo systemctl restart cloudflared (or cloudflared tunnel run <name>)
+#
+# If dashboard-managed (Cloudflare Zero Trust > Networks > Tunnels):
+#   Add a Public Hostname route:
+#     Subdomain: google-tasks
+#     Domain:    fmje.dev
+#     Service:   http://localhost:45690
+
+ingress:
+  - hostname: google-tasks.fmje.dev
+    service: http://localhost:45690
+  # ... your other rules ...
+  - service: http_status:404   # catch-all (keep last)

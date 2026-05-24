@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+token.json
+*token*.json
+client_secret*.json
+credentials*.json
+*keys*.json
+*oauth*.json
+layer_b_client_secrets.json
+*.egg-info/
+dist/
+build/
+.pytest_cache/
