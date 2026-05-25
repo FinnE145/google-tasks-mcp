@@ -48,14 +48,34 @@ def register_tools(mcp):
     # ------------------------------------------------------------------
 
     @mcp.tool()
-    def list_task_lists() -> list[dict]:
-        """Return all Google Tasks task lists with their id and title."""
+    def list_task_lists(include_counts: bool = False) -> list[dict]:
+        """
+        Return all Google Tasks task lists with their id and title.
+
+        include_counts: if true, each list also includes incomplete_count and
+          complete_count. Only set this when you actually need the counts — it
+          makes one extra API call per list and will be noticeably slower when
+          you have many lists.
+        """
         service = google_tasks.get_service()
         try:
             result = service.tasklists().list().execute()
         except HttpError as exc:
             return [google_tasks.handle_http_error(exc, "task lists")]
-        return [{"id": tl["id"], "title": tl["title"]} for tl in result.get("items", [])]
+
+        lists = []
+        for tl in result.get("items", []):
+            entry = {"id": tl["id"], "title": tl["title"]}
+            if include_counts:
+                try:
+                    all_tasks = google_tasks.fetch_all_tasks(service, tl["id"], include_completed=True)
+                    entry["incomplete_count"] = sum(1 for t in all_tasks if t.get("status") != "completed")
+                    entry["complete_count"] = sum(1 for t in all_tasks if t.get("status") == "completed")
+                except HttpError:
+                    entry["incomplete_count"] = None
+                    entry["complete_count"] = None
+            lists.append(entry)
+        return lists
 
     @mcp.tool()
     def create_task_list(name: str) -> dict:
@@ -72,7 +92,11 @@ def register_tools(mcp):
     # ------------------------------------------------------------------
 
     @mcp.tool()
-    def list_tasks(list_id: str, include_completed: bool = False) -> list[dict] | dict:
+    def list_tasks(
+        list_id: str,
+        include_completed: bool = False,
+        count_only: bool = False,
+    ) -> list[dict] | dict:
         """
         List all tasks in a list (general view).
 
@@ -81,6 +105,9 @@ def register_tools(mcp):
         Unlike list_tasks_by_category, childless top-level tasks are NOT dropped.
 
         list_id accepts a list name or id.
+        count_only: if true, return task counts instead of the full list.
+          Returns {"count": N} when include_completed=false, or
+          {"incomplete_count": N, "complete_count": N} when include_completed=true.
         """
         service = google_tasks.get_service()
         list_id = _resolve.resolve_list(service, list_id)
@@ -91,6 +118,13 @@ def register_tools(mcp):
             all_tasks = google_tasks.fetch_all_tasks(service, list_id, include_completed)
         except HttpError as exc:
             return google_tasks.handle_http_error(exc, "tasks")
+
+        if count_only:
+            if include_completed:
+                incomplete = sum(1 for t in all_tasks if t.get("status") != "completed")
+                complete = sum(1 for t in all_tasks if t.get("status") == "completed")
+                return {"incomplete_count": incomplete, "complete_count": complete}
+            return {"count": len(all_tasks)}
 
         top_level = sorted(
             [t for t in all_tasks if "parent" not in t],
@@ -118,6 +152,7 @@ def register_tools(mcp):
         list_id: str,
         category_ids: Optional[list[str]] = None,
         include_completed: bool = False,
+        count_only: bool = False,
     ) -> list[dict] | dict:
         """
         List tasks grouped by parent task (treated as a category label).
@@ -130,6 +165,10 @@ def register_tools(mcp):
         list_id accepts a list name or id.
         category_ids accepts category names or ids; omit to discover all categories
         (parents that have subtasks). Empty categories are returned explicitly.
+        count_only: if true, return task counts instead of the full grouped list.
+          Returns {"count": N} when include_completed=false, or
+          {"incomplete_count": N, "complete_count": N} when include_completed=true.
+          Counts cover all subtask items across all matched categories.
 
         NOTE: This was called list_tasks in the old server. Satura skill must
         call list_tasks_by_category going forward.
@@ -160,6 +199,14 @@ def register_tools(mcp):
                 [t["id"] for t in all_tasks if t["id"] in has_children and "parent" not in t],
                 key=lambda pid: tasks_by_id[pid].get("position", ""),
             )
+
+        if count_only:
+            subtasks = [t for t in all_tasks if t.get("parent") in set(target_ids)]
+            if include_completed:
+                incomplete = sum(1 for t in subtasks if t.get("status") != "completed")
+                complete = sum(1 for t in subtasks if t.get("status") == "completed")
+                return {"incomplete_count": incomplete, "complete_count": complete}
+            return {"count": len(subtasks)}
 
         result = []
         for pid in target_ids:
@@ -366,6 +413,7 @@ def register_tools(mcp):
         lists: Optional[list[str]] = None,
         parents: Optional[list[str]] = None,
         include_completed: bool = False,
+        count_only: bool = False,
     ) -> list[dict] | dict:
         """
         Search tasks by title and notes across one or more lists.
@@ -377,9 +425,12 @@ def register_tools(mcp):
         lists: list of list names or ids to search; omit to search all lists.
         parents: restrict to tasks under these parent categories (names or ids).
         include_completed: include completed tasks (default false).
+        count_only: if true, return {"count": N} instead of the full task list.
+          Useful when you only need to know how many tasks match the filters
+          without fetching all task details.
 
         Returns each match with list_id, list_title, and matched_in ("title" /
-        "notes" / "both").
+        "notes" / "both"), or {"count": N} when count_only=true.
         """
         service = google_tasks.get_service()
 
@@ -457,4 +508,6 @@ def register_tools(mcp):
                 entry["matched_in"] = matched_in
                 results.append(entry)
 
+        if count_only:
+            return {"count": len(results)}
         return results
