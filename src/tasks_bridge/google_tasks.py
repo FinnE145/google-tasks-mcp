@@ -5,6 +5,8 @@ import logging
 from datetime import datetime
 from pathlib import Path
 
+from urllib.parse import parse_qs, urlparse
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -116,7 +118,17 @@ def handle_http_error(exc: HttpError, context: str) -> dict:
 def bootstrap_token(secrets_file: Path, token_file: Path) -> None:
     """Run InstalledAppFlow once to get and store a refresh token."""
     flow = InstalledAppFlow.from_client_secrets_file(str(secrets_file), scopes=[TASKS_SCOPE])
-    creds = flow.run_local_server(port=0, open_browser=False)
+    flow.redirect_uri = "http://localhost"
+    auth_url, _ = flow.authorization_url(prompt="consent", access_type="offline")
+    print(f"Open this URL in your browser:\n\n  {auth_url}\n")
+    print("After authorizing, your browser will redirect to http://localhost (which will fail to load).")
+    print("Copy the full URL from the address bar and paste it here.")
+    redirected = input("Redirected URL: ").strip()
+    code = parse_qs(urlparse(redirected).query).get("code", [None])[0]
+    if not code:
+        raise ValueError(f"No 'code' found in URL: {redirected}")
+    flow.fetch_token(code=code)
+    creds = flow.credentials
     token_file.write_text(json.dumps({
         "access_token": creds.token,
         "refresh_token": creds.refresh_token,
