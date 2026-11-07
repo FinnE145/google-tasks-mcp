@@ -1,0 +1,9 @@
+# Locally managed tunnel for the Tasks MCP (made on fe-home in May 2026). The DNS record google-tasks.fmje.dev -> this
+# tunnel is in Cloudflare; the credentials are /srv/stacks/tasksmcp/tunnel.json on fe-pro, never in git.
+# Only one machine may run this tunnel at a time.
+tunnel: c0239237-abc3-491c-9b96-332691e31dbb
+credentials-file: /etc/cloudflared/tunnel.json
+ingress:
+  - hostname: google-tasks.fmje.dev
+    service: http://172.31.71.10:45690
+  - service: http_status:404

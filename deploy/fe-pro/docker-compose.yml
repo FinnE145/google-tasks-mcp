@@ -1,0 +1,59 @@
+# Google Tasks MCP on fe-pro (see /srv/fe-pro/SERVER.md, "tasksmcp"). Run from /srv/stacks/tasksmcp/repo/deploy/fe-pro:
+#   docker compose up -d --build
+# https://google-tasks.fmje.dev -> Cloudflare Tunnel -> tasksmcp-cloudflared (outbound only) -> tasksmcp-web:45690.
+# Public on purpose: the Claude.ai connector must reach it. Google login with ALLOWED_EMAILS is the only gate (README).
+# Nothing is published on the host. The host firewall keys on the pinned addresses: cloudflared may reach only
+# web:45690 and the internet; web may reach the internet (Google's APIs) but nothing private (SERVER.md,
+# "Tunnel container lockdown"). Keep the ipv4_address pins.
+name: tasksmcp
+services:
+  web:
+    build: { context: ../.., dockerfile: deploy/fe-pro/Dockerfile }
+    image: tasksmcp
+    container_name: tasksmcp-web
+    # tasksmcp (2009), its own account (SERVER.md, "Accounts"): it holds a refresh token for Finn's Google account
+    # and is public. It owns /srv/stacks/tasksmcp/data (token.json, the Layer B client, FastMCP's OAuth state).
+    user: "2009:2009"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    # LAYER_A_CLIENT_ID, LAYER_A_CLIENT_SECRET. Mode 600, finne-owned, never in git.
+    env_file: /srv/stacks/tasksmcp/tasksmcp.env
+    environment:
+      LAYER_B_CLIENT_SECRETS_FILE: /data/layer_b_client_secrets.json
+      TASKS_TOKEN_FILE: /data/token.json
+      BASE_URL: https://google-tasks.fmje.dev
+      ALLOWED_EMAILS: finne014@gmail.com
+    volumes:
+      - /srv/stacks/tasksmcp/data:/data
+    dns: [1.1.1.1, 1.0.0.1]
+    restart: unless-stopped
+    networks:
+      tasksmcp:
+        ipv4_address: 172.31.71.10
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    container_name: tasksmcp-cloudflared
+    restart: unless-stopped
+    # HTTP/2, not QUIC: QUIC connections from fe-pro time out every 20-30 s (SERVER.md, "satura").
+    command: tunnel --no-autoupdate --protocol http2 --config /etc/cloudflared/config.yml run
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    dns: [1.1.1.1, 1.0.0.1]
+    volumes:
+      - ./cloudflared.yml:/etc/cloudflared/config.yml:ro
+      # the tunnel's credentials, owned by the image's user (65532), mode 400
+      - /srv/stacks/tasksmcp/tunnel.json:/etc/cloudflared/tunnel.json:ro
+    depends_on: [web]
+    networks:
+      tasksmcp:
+        ipv4_address: 172.31.71.20
+
+networks:
+  tasksmcp:
+    ipam:
+      config:
+        - subnet: 172.31.71.0/24
