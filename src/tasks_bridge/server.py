@@ -19,6 +19,10 @@ logging.basicConfig(
     format="%(asctime)s %(levelname)s %(name)s: %(message)s",
 )
 logger = logging.getLogger(__name__)
+# httpx logs every request URL at INFO, and FastMCP's Google check sends the access token in the query string
+# (oauth2.googleapis.com/tokeninfo?access_token=...), so at INFO the tokens ended up in the log.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 
 # Google requires a privacy policy link to publish the OAuth consent screen.
